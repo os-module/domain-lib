@@ -1,2 +1,1 @@
-mod region;
-pub use region::SafeIORegion;
+pub use io::region::SafeIORegion;

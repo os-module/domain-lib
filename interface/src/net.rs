@@ -16,8 +16,8 @@ pub type SocketID = usize;
 #[proxy(NetDomainProxy, RwLock, String)]
 pub trait NetDomain: DeviceBase + Basic + DowncastSync {
     fn init(&self, nic_domain_name: &str) -> AlienResult<()>;
-    fn socket(&self, domain: Domain, ty: SocketType, protocol: usize) -> AlienResult<SocketID>;
-    fn socket_pair(&self, domain: Domain, ty: SocketType) -> AlienResult<(SocketID, SocketID)>;
+    fn socket(&self, s_domain: Domain, ty: SocketType, protocol: usize) -> AlienResult<SocketID>;
+    fn socket_pair(&self, s_domain: Domain, ty: SocketType) -> AlienResult<(SocketID, SocketID)>;
     fn remove_socket(&self, socket_id: SocketID) -> AlienResult<()>;
     fn bind(&self, socket_id: SocketID, addr: &DBox<SocketAddrIn>)
         -> AlienResult<Option<SocketID>>;

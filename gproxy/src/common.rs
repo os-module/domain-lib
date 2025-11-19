@@ -160,7 +160,7 @@ pub fn gen_trampoline_info(arg_domain_change: &[TokenStream], no_check: bool) ->
         quote!()
     } else {
         let x1 = quote!(
-            let id = r_domain.domain_id();
+            let id = domain.domain_id();
         );
         x1
     };

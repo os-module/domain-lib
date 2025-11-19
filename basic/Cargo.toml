@@ -13,6 +13,7 @@ domain_main = { path = "../domain_main" }
 corelib = { path = "../corelib", features = ["core_impl"] }
 task_meta = { path = "../task_meta" }
 shared_heap = { path = "../shared_heap" }
+io = { path = "../io" }
 
 pod = { git = "https://github.com/asterinas/pod", rev = "d7dba56" }
 memory_addr = { git = "https://github.com/os-module/memory_addr" }

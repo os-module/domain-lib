@@ -48,7 +48,6 @@ pub fn def_struct_rcu(proxy: Proxy, trait_def: ItemTrait) -> TokenStream {
                 #[derive(Debug)]
                 pub struct #ident{
                     domain: RcuData<Box<dyn #trait_name>>,
-                    srcu_lock: SRcuLock,
                     domain_loader: Mutex<DomainLoader>,
                     #resource_field
                 }
@@ -56,7 +55,6 @@ pub fn def_struct_rcu(proxy: Proxy, trait_def: ItemTrait) -> TokenStream {
                     pub fn new(domain: Box<dyn #trait_name>,domain_loader: DomainLoader)->Self{
                         Self{
                             domain: RcuData::new(Box::new(domain)),
-                            srcu_lock: SRcuLock::new(),
                             domain_loader: Mutex::new(domain_loader),
                             #resource_init
                         }
@@ -121,34 +119,24 @@ fn impl_prox_ext_trait(
     quote!(
         impl #proxy_name{
              pub fn replace(&self,new_domain: Box<dyn #trait_name>,loader:DomainLoader) -> AlienResult<()> {
-                let tick = TimeTick::new("Reinit domain");
+                let total = TimeTick::new("Total Time");
                 let mut loader_guard = self.domain_loader.lock();
                 let old_id = self.domain_id();
-
+                let tick = TimeTick::new("Reinit domain without state");
                 // init the new domain before swap
                 #replace_call
                 drop(tick);
-                let tick = TimeTick::new("Domain swap");
-                let old_domain = self.domain.swap(Box::new(new_domain));
-                // synchronize the reader which is reading the old domain
-                // println!("srcu synchronize");
-                drop(tick);
 
-                let tick = TimeTick::new("SRCU Synchronize");
-                self.srcu_lock.synchronize();
-                // println!("srcu synchronize end");
-                drop(tick);
+               let old_domain = self.domain.update(Box::new(new_domain));
 
                 let tick = TimeTick::new("Recycle resources");
                 // forget the old domain
                 // it will be dropped by the `free_domain_resource`
                 let real_domain = Box::into_inner(old_domain);
-                forget(real_domain);
-
+                core::mem::forget(real_domain);
                 free_domain_resource(old_id, FreeShared::Free,free_frames);
                 drop(tick);
                 *loader_guard = loader;
-
                 Ok(())
             }
         }
@@ -201,7 +189,9 @@ fn impl_func_code(
             let token = quote!(
                 #(#attr)*
                 #sig{
-                    self.domain.get().init(#(#input_argv),*)
+                    self.domain.read_directly(|domain|{
+                        domain.#func_name(#(#input_argv),*)
+                    })
                 }
             );
             token
@@ -250,16 +240,14 @@ fn gen_trampoline(arg: TrampolineArg) -> TokenStream {
     } = gen_trampoline_info(&arg_domain_change, no_check);
 
     quote! (
-            let idx = self.srcu_lock.read_lock();
-            let r_domain = self.domain.get();
             #check_code
-            #get_domain_id
-            #(#arg_domain_change)*
-            let res = r_domain.#func_name(#(#input_argv),*).map(|r| {
-                #call_move_to
-                r
-            });
-            self.srcu_lock.read_unlock(idx);
-            res
+            self.domain.read(|domain|{
+                #get_domain_id
+                #(#arg_domain_change)*
+                domain.#func_name(#(#input_argv),*).map(|r| {
+                    #call_move_to
+                    r
+                })
+            })
     )
 }

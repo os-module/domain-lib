@@ -41,23 +41,23 @@ pub fn def_struct_rwlock(proxy: Proxy, trait_def: ItemTrait) -> TokenStream {
         replace_call,
     } = resource_code(&proxy);
 
-    let ident_key = Ident::new(
-        &format!("{}_KEY", ident.to_string().to_uppercase()),
-        trait_name.span(),
-    );
+    // let ident_key = Ident::new(
+    //     &format!("{}_KEY", ident.to_string().to_uppercase()),
+    //     trait_name.span(),
+    // );
 
-    let prox_ext_impl = impl_prox_ext_trait(&ident, replace_call, trait_name, ident_key.clone());
+    let prox_ext_impl = impl_prox_ext_trait(&ident, replace_call, trait_name);
 
     quote::quote!(
         #[macro_export]
         macro_rules! #macro_ident {
             () => {
-                define_static_key_false!(#ident_key);
                 #[derive(Debug)]
                 pub struct #ident{
                     domain: RcuData<Box<dyn #trait_name>>,
                     lock: RwLock<()>,
                     domain_loader: SleepMutex<DomainLoader>,
+                    flag: core::sync::atomic::AtomicBool,
                     counter: PerCpuCounter,
                     #resource_field
                 }
@@ -67,6 +67,7 @@ pub fn def_struct_rwlock(proxy: Proxy, trait_def: ItemTrait) -> TokenStream {
                             domain: RcuData::new(Box::new(domain)),
                             lock: RwLock::new(()),
                             domain_loader: SleepMutex::new(domain_loader),
+                            flag: core::sync::atomic::AtomicBool::new(false),
                             counter: PerCpuCounter::new(),
                             #resource_init
                         }
@@ -140,23 +141,22 @@ fn impl_prox_ext_trait(
     proxy_name: &Ident,
     replace_call: TokenStream,
     trait_name: &Ident,
-    ident_key: Ident,
 ) -> TokenStream {
     let code = quote!(
         impl #proxy_name{
             pub fn replace(&self,new_domain: Box<dyn #trait_name>,loader:DomainLoader) -> AlienResult<()> {
                 // stage1: get the sleep lock and change to updating state
-                let tick = TimeTick::new("Task Sync");
                 let mut loader_guard = self.domain_loader.lock();
+                let old_id = self.domain_id();
 
-
+                let tick = TimeTick::new("Task Sync");
                  // stage2: get the write lock and wait for all readers to finish
                 let w_lock = self.lock.write();
 
-                k_static_branch_enable!(#ident_key);
+                self.flag.store(true, core::sync::atomic::Ordering::SeqCst);
 
                 // why we need to synchronize_sched here?
-                synchronize_sched();
+                sync_cpus();
 
                 // wait if there are readers which are reading the old domain but no read lock
                 while self.all_counter() > 0 {
@@ -166,7 +166,6 @@ fn impl_prox_ext_trait(
                 drop(tick);
 
                 let tick = TimeTick::new("Reinit and state transfer");
-                let old_id = self.domain_id();
 
                 // stage3: init the new domain before swap
                 let new_domain_id = new_domain.domain_id();
@@ -175,18 +174,19 @@ fn impl_prox_ext_trait(
 
                 let tick = TimeTick::new("Domain swap");
                 // stage4: swap the domain and change to normal state
-                let old_domain = self.domain.swap(Box::new(new_domain));
+                let old_domain = self.domain.update_directly(Box::new(new_domain));
                 // change to normal state
-                k_static_branch_disable!(#ident_key);
-
+                self.flag.store(false, core::sync::atomic::Ordering::SeqCst);
                 drop(tick);
 
                 let tick = TimeTick::new("Recycle resources");
                 // stage5: recycle all resources
                 let real_domain = Box::into_inner(old_domain);
-                forget(real_domain);
+                core::mem::forget(real_domain);
+
                 free_domain_resource(old_id, FreeShared::NotFree(new_domain_id),free_frames);
                 drop(tick);
+
                 // stage6: release all locks
                 *loader_guard = loader;
                 drop(w_lock);
@@ -246,7 +246,9 @@ fn impl_func_code_rwlock(
             let token = quote!(
                 #(#attr)*
                 #sig{
-                    self.domain.get().init(#(#input_argv),*)
+                    self.domain.read_directly(|domain|{
+                        domain.init(#(#input_argv),*)
+                    })
                 }
             );
             (token, quote!())
@@ -279,7 +281,7 @@ fn gen_trampoline_rwlock(arg: TrampolineArg) -> (TokenStream, TokenStream) {
     let TrampolineArg {
         has_recovery,
         trait_name,
-        proxy_name,
+        proxy_name:_,
         func_name,
         input_argv,
         fn_args,
@@ -300,12 +302,12 @@ fn gen_trampoline_rwlock(arg: TrampolineArg) -> (TokenStream, TokenStream) {
         &info,
     );
 
-    let ident_key = Ident::new(
-        &format!("{}_KEY", proxy_name.to_string().to_uppercase()),
-        proxy_name.span(),
-    );
+    // let ident_key = Ident::new(
+    //     &format!("{}_KEY", proxy_name.to_string().to_uppercase()),
+    //     proxy_name.span(),
+    // );
     let call = quote!(
-        if static_branch_likely!(#ident_key) {
+        if self.flag.load(core::sync::atomic::Ordering::SeqCst) {
             return self.#__ident_with_lock(#(#input_argv),*);
         }
         self.#__ident_no_lock(#(#input_argv),*)
@@ -335,15 +337,24 @@ fn impl_inner_code(
     } = info;
 
     let ident_call = quote!(
-        let r_domain = self.domain.get();
-        #check_code
-        #get_domain_id
-        #(#arg_domain_change)*
-        let res = r_domain.#func_name(#(#input_argv),*).map(|r| {
-            #call_move_to
-            r
-        });
-        res
+        // let r_domain = self.domain.get();
+        // #check_code
+        // #get_domain_id
+        // #(#arg_domain_change)*
+        // let res = r_domain.#func_name(#(#input_argv),*).map(|r| {
+        //     #call_move_to
+        //     r
+        // });
+        // res
+        self.domain.read_directly(|domain|{
+            #check_code
+            #get_domain_id
+            #(#arg_domain_change)*
+            domain.#func_name(#(#input_argv),*).map(|r| {
+                #call_move_to
+                r
+            })
+        })
     );
 
     let inner_call = quote!(
@@ -362,7 +373,7 @@ fn impl_inner_code(
         #[inline(always)]
         fn #__ident_with_lock(&self, #(#fn_argv),*)#output{
             // let r_lock = self.lock.read();
-            let  r_lock = loop {
+            let r_lock = loop {
                 if let Some(r) = self.lock.try_read() {
                     break r;
                 }else {

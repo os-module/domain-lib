@@ -1,10 +1,7 @@
-#![feature(naked_functions)]
 extern crate alloc;
-use core::sync::atomic::AtomicU64;
-use std::{fmt::Debug, ops::Range};
-
-use gproxy::{no_check, proxy, recoverable};
-use spin::{Mutex, Once, RwLock};
+use std::{any::Any, fmt::Debug};
+use gproxy::{no_check, proxy};
+use spin::RwLock;
 #[derive(Debug)]
 pub enum AlienError {
     DOMAINCRASH,
@@ -12,6 +9,7 @@ pub enum AlienError {
 type AlienResult<T> = Result<T, AlienError>;
 pub trait Basic: Debug {
     fn is_active(&self) -> bool;
+    fn domain_id(&self) -> u64;
 }
 
 pub trait DomainReload {
@@ -39,6 +37,19 @@ pub struct DomainLoader {}
 impl DomainLoader {}
 
 gen_for_XXXDomain!();
+pub enum FreeShared {
+    Free,
+    NotFree(u64),
+}
+pub fn free_domain_resource<T>(domain_id: u64, free_shared: FreeShared, free: T)
+where
+    T: Fn(*mut u8, usize),
+{
+}
+
+fn yield_now(){
+
+}
 
 #[no_mangle]
 fn register_cont() {}

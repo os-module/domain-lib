@@ -14,7 +14,8 @@ members = [
     "storage",
     "task_meta",
     "wrapper_macro",
-    "domain_manager"
+    "domain_manager",
+    "io",
 ]
 
 
