@@ -33,7 +33,9 @@ pub fn impl_supertrait(ident: Ident, trait_def: ItemTrait, sync_ty: SyncType) ->
                     "Basic" => {
                         let (ext_code, inner_code) = match sync_ty {
                             SyncType::Srcu => (quote!(), srcu_for_domain_id()),
-                            SyncType::Rwlock => (lock_for_domain_id(&ident), rwlock_for_domain_id()),
+                            SyncType::Rwlock => {
+                                (lock_for_domain_id(&ident), rwlock_for_domain_id())
+                            }
                         };
                         let basic = quote!(
                             #ext_code
@@ -58,13 +60,11 @@ pub fn impl_supertrait(ident: Ident, trait_def: ItemTrait, sync_ty: SyncType) ->
     )
 }
 
-fn srcu_for_domain_id()->TokenStream{
-    quote!(
-        self.domain.read(|domain|domain.domain_id())
-    )
+fn srcu_for_domain_id() -> TokenStream {
+    quote!(self.domain.read(|domain| domain.domain_id()))
 }
 
-fn rwlock_for_domain_id()->TokenStream{
+fn rwlock_for_domain_id() -> TokenStream {
     quote!(
         if self.flag.load(core::sync::atomic::Ordering::SeqCst) {
             return self.__domain_id_with_lock();
@@ -73,7 +73,7 @@ fn rwlock_for_domain_id()->TokenStream{
     )
 }
 
-fn lock_for_domain_id(ident: &Ident)->TokenStream{
+fn lock_for_domain_id(ident: &Ident) -> TokenStream {
     quote!(
         impl #ident{
             fn __domain_id(&self)->u64{
@@ -96,9 +96,7 @@ fn lock_for_domain_id(ident: &Ident)->TokenStream{
 }
 
 fn impl_srcu_code() -> TokenStream {
-    quote!(
-        self.domain.read(|domain|domain.handle_irq())
-    )
+    quote!(self.domain.read(|domain| domain.handle_irq()))
 }
 
 fn impl_rwlock_code(_ident: &Ident) -> TokenStream {

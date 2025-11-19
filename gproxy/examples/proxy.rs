@@ -1,5 +1,6 @@
 extern crate alloc;
 use std::{any::Any, fmt::Debug};
+
 use gproxy::{no_check, proxy};
 use spin::RwLock;
 #[derive(Debug)]
@@ -47,9 +48,7 @@ where
 {
 }
 
-fn yield_now(){
-
-}
+fn yield_now() {}
 
 #[no_mangle]
 fn register_cont() {}

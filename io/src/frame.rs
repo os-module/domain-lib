@@ -1,5 +1,8 @@
-use core::ops::{Deref, DerefMut};
-use core::sync::atomic::AtomicUsize;
+use core::{
+    ops::{Deref, DerefMut},
+    sync::atomic::AtomicUsize,
+};
+
 use memory_addr::{PhysAddr, VirtAddr};
 
 #[derive(Debug)]

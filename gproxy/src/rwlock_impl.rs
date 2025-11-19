@@ -281,7 +281,7 @@ fn gen_trampoline_rwlock(arg: TrampolineArg) -> (TokenStream, TokenStream) {
     let TrampolineArg {
         has_recovery,
         trait_name,
-        proxy_name:_,
+        proxy_name: _,
         func_name,
         input_argv,
         fn_args,

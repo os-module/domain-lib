@@ -1,4 +1,5 @@
 use core::ops::Range;
+
 use memory_addr::{PhysAddr, VirtAddr};
 
 #[derive(Debug, Clone)]
@@ -29,7 +30,7 @@ impl SafeIORegion {
         unsafe { core::slice::from_raw_parts_mut(start as *mut u8, self.size()) }
     }
 
-    pub fn read_at<T: Copy>(&self, offset: usize) -> Result<T,()> {
+    pub fn read_at<T: Copy>(&self, offset: usize) -> Result<T, ()> {
         if offset + core::mem::size_of::<T>() > self.size() {
             return Err(());
         }
@@ -38,7 +39,7 @@ impl SafeIORegion {
         unsafe { Ok(ptr.read_volatile()) }
     }
 
-    pub fn write_at<T: Copy>(&self, offset: usize, value: T) -> Result<(),()> {
+    pub fn write_at<T: Copy>(&self, offset: usize, value: T) -> Result<(), ()> {
         if offset + core::mem::size_of::<T>() > self.size() {
             return Err(());
         }

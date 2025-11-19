@@ -1,8 +1,7 @@
 #![no_std]
 
-pub mod region;
 pub mod frame;
-
+pub mod region;
 
 /// A safe wrapper around a raw pointer.
 #[derive(Copy, Clone, Debug)]
